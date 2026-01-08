@@ -68,6 +68,10 @@ const PRESETS = {
  */
 export default class PerfectPDFExportPlugin extends Plugin {
 	settings: PerfectPDFSettings;
+	
+	// Constants for timing
+	private readonly STYLE_APPLY_DELAY = 100; // ms to wait for styles to apply
+	private readonly CLEANUP_DELAY = 1000; // ms to wait before removing styles
 
 	async onload() {
 		await this.loadSettings();
@@ -133,7 +137,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 			return;
 		}
 
-		new Notice('Exporting to PDF...');
+		new Notice('Preparing PDF export...');
 
 		try {
 			// Get the file content
@@ -145,7 +149,8 @@ export default class PerfectPDFExportPlugin extends Plugin {
 			// Use Obsidian's built-in print functionality with our CSS
 			await this.printWithCustomCSS(content, css);
 			
-			new Notice('PDF export complete!');
+			// Show success message
+			new Notice('Print dialog opened. Save as PDF to complete export.');
 		} catch (error) {
 			console.error('Export failed:', error);
 			new Notice('PDF export failed. See console for details.');
@@ -156,8 +161,9 @@ export default class PerfectPDFExportPlugin extends Plugin {
 	 * Generate optimized CSS based on settings
 	 */
 	generateOptimizedCSS(): string {
-		const { fontSize, margins, preventTableSplits, preventCalloutSplits, 
-		        preventListSplits, optimizeTableWidth, wordWrap } = this.settings;
+		const { fontSize, margins, pageOrientation, preventTableSplits, 
+				preventCalloutSplits, preventListSplits, optimizeTableWidth, 
+				wordWrap } = this.settings;
 
 		let css = `
 		@media print {
@@ -167,9 +173,10 @@ export default class PerfectPDFExportPlugin extends Plugin {
 				line-height: 1.5;
 			}
 
-			/* Margins */
+			/* Margins and orientation */
 			@page {
 				margin: ${margins === 'narrow' ? '0.5in' : margins === 'wide' ? '1in' : '0.75in'};
+				${pageOrientation !== 'auto' ? `size: ${pageOrientation};` : ''}
 			}
 
 			/* Prevent horizontal overflow */
@@ -275,7 +282,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 
 	/**
 	 * Print with custom CSS
-	 * This is a placeholder - actual implementation will use Obsidian's print API
+	 * Applies custom CSS and triggers the print dialog for the active view
 	 */
 	async printWithCustomCSS(content: string, css: string) {
 		// Create a temporary style element
@@ -284,14 +291,21 @@ export default class PerfectPDFExportPlugin extends Plugin {
 		styleEl.textContent = css;
 		document.head.appendChild(styleEl);
 
+		// Wait a moment for styles to apply
+		await new Promise(resolve => setTimeout(resolve, this.STYLE_APPLY_DELAY));
+
 		// Trigger print dialog
 		window.print();
 
-		// Clean up after a delay
-		setTimeout(() => {
+		// Clean up after print dialog is closed
+		// The print event handlers help ensure styles stay during print
+		const cleanup = () => {
 			const el = document.getElementById('perfect-pdf-export-styles');
 			if (el) el.remove();
-		}, 1000);
+		};
+		
+		// Clean up after a delay to ensure print is complete
+		setTimeout(cleanup, this.CLEANUP_DELAY);
 	}
 }
 
