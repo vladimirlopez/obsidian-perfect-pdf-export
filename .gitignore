@@ -1,7 +1,7 @@
 node_modules
 *.js
+!main.js
 *.js.map
-main.js
 .DS_Store
 .vscode
 .idea
