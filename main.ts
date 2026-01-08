@@ -68,6 +68,10 @@ const PRESETS = {
  */
 export default class PerfectPDFExportPlugin extends Plugin {
 	settings: PerfectPDFSettings;
+	
+	// Constants for timing
+	private readonly STYLE_APPLY_DELAY = 100; // ms to wait for styles to apply
+	private readonly CLEANUP_DELAY = 1000; // ms to wait before removing styles
 
 	async onload() {
 		await this.loadSettings();
@@ -157,8 +161,9 @@ export default class PerfectPDFExportPlugin extends Plugin {
 	 * Generate optimized CSS based on settings
 	 */
 	generateOptimizedCSS(): string {
-		const { fontSize, margins, pageOrientation, preventTableSplits, preventCalloutSplits, 
-		        preventListSplits, optimizeTableWidth, wordWrap } = this.settings;
+		const { fontSize, margins, pageOrientation, preventTableSplits, 
+				preventCalloutSplits, preventListSplits, optimizeTableWidth, 
+				wordWrap } = this.settings;
 
 		let css = `
 		@media print {
@@ -287,7 +292,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 		document.head.appendChild(styleEl);
 
 		// Wait a moment for styles to apply
-		await new Promise(resolve => setTimeout(resolve, 100));
+		await new Promise(resolve => setTimeout(resolve, this.STYLE_APPLY_DELAY));
 
 		// Trigger print dialog
 		window.print();
@@ -300,7 +305,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 		};
 		
 		// Clean up after a delay to ensure print is complete
-		setTimeout(cleanup, 1000);
+		setTimeout(cleanup, this.CLEANUP_DELAY);
 	}
 }
 

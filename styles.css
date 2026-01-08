@@ -3,11 +3,6 @@
 /* This file contains styles that affect the plugin UI in Obsidian */
 /* The actual PDF export styles are generated dynamically in main.ts */
 
-/* Ribbon icon styling */
-.workspace-ribbon-collapse-btn {
-    /* Ensure the PDF export icon is visible */
-}
-
 /* Settings tab styling */
 .perfect-pdf-export-settings {
     padding: 20px;
@@ -43,9 +38,4 @@
     background-color: var(--background-secondary);
     border-radius: 5px;
     font-size: 0.9em;
-}
-
-/* Notice styling */
-.notice {
-    /* Inherit Obsidian's notice styles */
 }
