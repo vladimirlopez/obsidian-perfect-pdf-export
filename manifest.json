@@ -1,0 +1,11 @@
+{
+  "id": "perfect-pdf-export",
+  "name": "Perfect PDF Export",
+  "version": "0.1.0",
+  "minAppVersion": "0.15.0",
+  "description": "Professional PDF export with smart page breaks, table optimization, and automatic layout fixes. One-click solution for creating publication-ready PDFs.",
+  "author": "Vladimir Lopez",
+  "authorUrl": "https://github.com/vladimirlopez",
+  "fundingUrl": "https://ko-fi.com/vladimirlopez",
+  "isDesktopOnly": false
+}
