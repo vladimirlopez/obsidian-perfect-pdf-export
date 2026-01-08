@@ -275,7 +275,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 
 	/**
 	 * Print with custom CSS
-	 * This is a placeholder - actual implementation will use Obsidian's print API
+	 * Applies custom CSS and triggers the print dialog for the active view
 	 */
 	async printWithCustomCSS(content: string, css: string) {
 		// Create a temporary style element
@@ -284,14 +284,21 @@ export default class PerfectPDFExportPlugin extends Plugin {
 		styleEl.textContent = css;
 		document.head.appendChild(styleEl);
 
+		// Wait a moment for styles to apply
+		await new Promise(resolve => setTimeout(resolve, 100));
+
 		// Trigger print dialog
 		window.print();
 
-		// Clean up after a delay
-		setTimeout(() => {
+		// Clean up after print dialog is closed
+		// The print event handlers help ensure styles stay during print
+		const cleanup = () => {
 			const el = document.getElementById('perfect-pdf-export-styles');
 			if (el) el.remove();
-		}, 1000);
+		};
+		
+		// Clean up after a delay to ensure print is complete
+		setTimeout(cleanup, 1000);
 	}
 }
 
