@@ -133,7 +133,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 			return;
 		}
 
-		new Notice('Exporting to PDF...');
+		new Notice('Preparing PDF export...');
 
 		try {
 			// Get the file content
@@ -145,7 +145,8 @@ export default class PerfectPDFExportPlugin extends Plugin {
 			// Use Obsidian's built-in print functionality with our CSS
 			await this.printWithCustomCSS(content, css);
 			
-			new Notice('PDF export complete!');
+			// Show success message
+			new Notice('Print dialog opened. Save as PDF to complete export.');
 		} catch (error) {
 			console.error('Export failed:', error);
 			new Notice('PDF export failed. See console for details.');
@@ -156,7 +157,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 	 * Generate optimized CSS based on settings
 	 */
 	generateOptimizedCSS(): string {
-		const { fontSize, margins, preventTableSplits, preventCalloutSplits, 
+		const { fontSize, margins, pageOrientation, preventTableSplits, preventCalloutSplits, 
 		        preventListSplits, optimizeTableWidth, wordWrap } = this.settings;
 
 		let css = `
@@ -167,9 +168,10 @@ export default class PerfectPDFExportPlugin extends Plugin {
 				line-height: 1.5;
 			}
 
-			/* Margins */
+			/* Margins and orientation */
 			@page {
 				margin: ${margins === 'narrow' ? '0.5in' : margins === 'wide' ? '1in' : '0.75in'};
+				${pageOrientation !== 'auto' ? `size: ${pageOrientation};` : ''}
 			}
 
 			/* Prevent horizontal overflow */
