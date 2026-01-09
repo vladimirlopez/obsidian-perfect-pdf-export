@@ -1,6 +1,6 @@
 {
   "name": "obsidian-perfect-pdf-export",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "Professional PDF export for Obsidian with smart page breaks, table optimization, and one-click formatting",
   "main": "main.js",
   "scripts": {
