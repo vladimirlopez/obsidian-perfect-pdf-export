@@ -27,6 +27,20 @@ Professional PDF export for Obsidian with smart page breaks, table optimization,
 - Page orientation (portrait/landscape/auto)
 - Margin settings (narrow/normal/wide)
 - Toggle individual optimizations
+- **NEW in v2.0**: Page numbering with position control
+- **NEW in v2.0**: Custom headers and footers
+- **NEW in v2.0**: Export templates (save/load settings)
+- **NEW in v2.0**: Preview before export option
+
+### 📦 Version 2.0 Features
+- **Batch Export**: Export entire folders at once
+- **Export Templates**: Save and reuse custom settings
+- **Live Preview**: Optional preview before export
+- **Page Numbering**: Add page numbers to your PDFs
+- **Custom Headers/Footers**: Personalize your documents
+- **Enhanced Table Handling**: Better support for large tables
+- **Fixed Nested Callouts**: Improved spacing for complex layouts
+- **Mobile Support**: Now works on mobile devices
 
 ## 🚀 Quick Start
 
@@ -109,34 +123,32 @@ npm run build
 3. Reload Obsidian
 4. Test with various note types
 
-## 📋 Roadmap
+## 📋 Version History
 
-### Version 0.1.0 (Current)
-- [x] Basic export functionality
-- [x] Page break prevention
-- [x] Table optimization
-- [x] Export presets
-- [x] Settings tab
+### Version 2.0.0 (Current)
+- ✅ Batch export functionality
+- ✅ Export templates (save/load settings)
+- ✅ Live preview before export
+- ✅ Custom headers/footers
+- ✅ Page numbering
+- ✅ Fixed large table overflow issues
+- ✅ Fixed nested callout spacing issues
+- ✅ Mobile device support
 
-### Version 0.2.0 (Planned)
-- [ ] Batch export (folders)
-- [ ] Export templates (save/load settings)
-- [ ] Live preview before export
-- [ ] Custom headers/footers
-- [ ] Page numbering
+### Version 0.1.0 (Previous)
+- ✅ Basic export functionality
+- ✅ Page break prevention
+- ✅ Table optimization
+- ✅ Export presets
+- ✅ Settings tab
 
-### Version 0.3.0 (Future)
-- [ ] Auto-detect landscape for wide tables
-- [ ] Watermark support
-- [ ] Table of contents generation
-- [ ] HTML export option
-- [ ] Export history
+## 🐛 Improvements in v2.0
 
-## 🐛 Known Issues
+All previous known issues have been addressed in version 2.0.0:
 
-- **Large tables**: Very wide tables may still overflow (use landscape mode)
-- **Complex layouts**: Nested callouts may have spacing issues
-- **Mobile**: Desktop-only for now
+- ✅ **Large tables**: Fixed with improved table layout algorithm using fixed table layout
+- ✅ **Complex layouts**: Fixed nested callouts spacing issues with enhanced CSS rules
+- ✅ **Mobile**: Now supports both desktop and mobile devices
 
 ## 💡 Tips
 
@@ -145,15 +157,7 @@ npm run build
 3. **Landscape for tables**: Enable landscape mode for table-heavy documents
 4. **Simplify if needed**: Combine columns in very wide tables
 
-## 🤝 Contributing
 
-Contributions are welcome!
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
 
 ## 📝 License
 
@@ -167,16 +171,12 @@ MIT License - see LICENSE file for details
 
 ## 📧 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/obsidian-perfect-pdf-export/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/obsidian-perfect-pdf-export/discussions)
-- **Discord**: Obsidian Discord #plugin-support
+For support inquiries, please contact the author directly.
 
-## ☕ Donate
+## ☕ Support the Project
 
 If you find this plugin helpful, consider:
-- ⭐ Starring the repository
-- 💬 Sharing with others
-- ☕ [Buy me a coffee](https://ko-fi.com/yourusername)
+- ☕ [Buy me a coffee](https://ko-fi.com/vladimirlopez)
 
 ---
 

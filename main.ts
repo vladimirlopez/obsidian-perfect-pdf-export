@@ -1,4 +1,12 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, TFolder, Modal } from 'obsidian';
+
+/**
+ * Saved Template Interface
+ */
+interface ExportTemplate {
+	name: string;
+	settings: PerfectPDFSettings;
+}
 
 /**
  * Plugin Settings Interface
@@ -13,6 +21,12 @@ interface PerfectPDFSettings {
 	preventListSplits: boolean;
 	optimizeTableWidth: boolean;
 	wordWrap: boolean;
+	enablePageNumbers: boolean;
+	pageNumberPosition: 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
+	customHeader: string;
+	customFooter: string;
+	savedTemplates: ExportTemplate[];
+	showPreviewBeforeExport: boolean;
 }
 
 /**
@@ -27,7 +41,13 @@ const DEFAULT_SETTINGS: PerfectPDFSettings = {
 	preventCalloutSplits: true,
 	preventListSplits: false, // Allow lists to break if needed
 	optimizeTableWidth: true,
-	wordWrap: true
+	wordWrap: true,
+	enablePageNumbers: false,
+	pageNumberPosition: 'bottom-center',
+	customHeader: '',
+	customFooter: '',
+	savedTemplates: [],
+	showPreviewBeforeExport: false
 };
 
 /**
@@ -91,7 +111,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 			id: 'export-folder-to-pdf',
 			name: 'Export current folder to PDFs',
 			callback: async () => {
-				new Notice('Batch export coming in v0.2.0!');
+				await this.exportFolderToPDFs();
 			}
 		});
 
@@ -133,6 +153,14 @@ export default class PerfectPDFExportPlugin extends Plugin {
 			return;
 		}
 
+		// Show preview if enabled
+		if (this.settings.showPreviewBeforeExport) {
+			const shouldProceed = await this.showPreviewModal(activeFile);
+			if (!shouldProceed) {
+				return;
+			}
+		}
+
 		new Notice('Exporting to PDF...');
 
 		try {
@@ -153,11 +181,191 @@ export default class PerfectPDFExportPlugin extends Plugin {
 	}
 
 	/**
+	 * Batch export folder to PDFs
+	 */
+	async exportFolderToPDFs() {
+		const activeFile = this.app.workspace.getActiveFile();
+		
+		if (!activeFile) {
+			new Notice('Please open a file in the folder you want to export');
+			return;
+		}
+
+		const folder = activeFile.parent;
+		if (!folder) {
+			new Notice('Could not determine folder');
+			return;
+		}
+
+		const files = folder.children.filter(child => child instanceof TFile && child.extension === 'md') as TFile[];
+		
+		if (files.length === 0) {
+			new Notice('No markdown files found in folder');
+			return;
+		}
+
+		new Notice(`Exporting ${files.length} files from "${folder.name}"...`);
+
+		let successCount = 0;
+		let failCount = 0;
+
+		for (const file of files) {
+			try {
+				const content = await this.app.vault.read(file);
+				const css = this.generateOptimizedCSS();
+				
+				// Open each file before exporting
+				await this.app.workspace.openLinkText(file.path, '', false);
+				await new Promise(resolve => setTimeout(resolve, 500)); // Wait for file to open
+				
+				await this.printWithCustomCSS(content, css);
+				successCount++;
+				
+				// Small delay between exports
+				await new Promise(resolve => setTimeout(resolve, 1000));
+			} catch (error) {
+				console.error(`Failed to export ${file.name}:`, error);
+				failCount++;
+			}
+		}
+
+		new Notice(`Batch export complete: ${successCount} successful, ${failCount} failed`);
+	}
+
+	/**
+	 * Show preview modal before export
+	 */
+	async showPreviewModal(file: TFile): Promise<boolean> {
+		return new Promise((resolve) => {
+			const modal = new PreviewModal(this.app, file, () => resolve(true), () => resolve(false));
+			modal.open();
+		});
+	}
+
+	/**
+	 * Save current settings as a template
+	 */
+	saveTemplate(name: string) {
+		// Create a shallow copy of settings without the savedTemplates array
+		const { savedTemplates, ...settingsToSave } = this.settings;
+		
+		const template: ExportTemplate = {
+			name,
+			settings: settingsToSave as PerfectPDFSettings
+		};
+		
+		this.settings.savedTemplates.push(template);
+		this.saveSettings();
+		new Notice(`Template "${name}" saved!`);
+	}
+
+	/**
+	 * Load a saved template
+	 */
+	loadTemplate(name: string) {
+		const template = this.settings.savedTemplates.find(t => t.name === name);
+		if (template) {
+			const savedTemplates = this.settings.savedTemplates;
+			Object.assign(this.settings, template.settings);
+			this.settings.savedTemplates = savedTemplates;
+			this.saveSettings();
+			new Notice(`Template "${name}" loaded!`);
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Delete a saved template
+	 */
+	deleteTemplate(name: string) {
+		const index = this.settings.savedTemplates.findIndex(t => t.name === name);
+		if (index !== -1) {
+			this.settings.savedTemplates.splice(index, 1);
+			this.saveSettings();
+			new Notice(`Template "${name}" deleted!`);
+			return true;
+		}
+		return false;
+	}
+
+	/**
 	 * Generate optimized CSS based on settings
 	 */
 	generateOptimizedCSS(): string {
 		const { fontSize, margins, preventTableSplits, preventCalloutSplits, 
-		        preventListSplits, optimizeTableWidth, wordWrap } = this.settings;
+		        preventListSplits, optimizeTableWidth, wordWrap, enablePageNumbers,
+		        pageNumberPosition, customHeader, customFooter, pageOrientation } = this.settings;
+
+		// Sanitize custom text to prevent CSS injection
+		const sanitizeCSS = (text: string): string => {
+			// Remove or escape potentially dangerous characters for CSS content
+			return text
+				.replace(/[\\]/g, '\\\\')  // Escape backslashes first
+				.replace(/["]/g, '\\"')     // Escape quotes
+				.replace(/[']/g, "\\'")     // Escape single quotes
+				.replace(/\n/g, ' ')        // Replace newlines with spaces
+				.replace(/\r/g, '')         // Remove carriage returns
+				.replace(/[(){}[\]<>]/g, '') // Remove potentially problematic chars
+				.replace(/;/g, '')          // Remove semicolons
+				.substring(0, 100);         // Limit length
+		};
+
+		// Determine page orientation CSS
+		let orientationCSS = '';
+		if (pageOrientation === 'landscape') {
+			orientationCSS = 'size: landscape;';
+		} else if (pageOrientation === 'portrait') {
+			orientationCSS = 'size: portrait;';
+		}
+		// 'auto' will be handled by analyzing content (future enhancement)
+
+		// Parse page number position
+		const [vAlign, hAlign] = pageNumberPosition.split('-');
+		let pageNumPosition = '';
+		if (enablePageNumbers) {
+			if (vAlign === 'top') {
+				pageNumPosition = `
+				@page {
+					@top-${hAlign === 'center' ? 'center' : hAlign === 'left' ? 'left' : 'right'} {
+						content: counter(page);
+					}
+				}`;
+			} else {
+				pageNumPosition = `
+				@page {
+					@bottom-${hAlign === 'center' ? 'center' : hAlign === 'left' ? 'left' : 'right'} {
+						content: counter(page);
+					}
+				}`;
+			}
+		}
+
+		// Custom headers and footers with sanitization
+		let headerCSS = '';
+		let footerCSS = '';
+		if (customHeader) {
+			const sanitizedHeader = sanitizeCSS(customHeader);
+			headerCSS = `
+			@page {
+				@top-center {
+					content: "${sanitizedHeader}";
+					font-size: 9pt;
+					color: #666;
+				}
+			}`;
+		}
+		if (customFooter) {
+			const sanitizedFooter = sanitizeCSS(customFooter);
+			footerCSS = `
+			@page {
+				@bottom-center {
+					content: "${sanitizedFooter}";
+					font-size: 9pt;
+					color: #666;
+				}
+			}`;
+		}
 
 		let css = `
 		@media print {
@@ -167,10 +375,15 @@ export default class PerfectPDFExportPlugin extends Plugin {
 				line-height: 1.5;
 			}
 
-			/* Margins */
+			/* Margins and page setup */
 			@page {
 				margin: ${margins === 'narrow' ? '0.5in' : margins === 'wide' ? '1in' : '0.75in'};
+				${orientationCSS}
 			}
+
+			${pageNumPosition}
+			${headerCSS}
+			${footerCSS}
 
 			/* Prevent horizontal overflow */
 			* {
@@ -187,7 +400,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 			}
 			` : ''}
 
-			/* Table optimization */
+			/* Enhanced table optimization - fixes large table overflow */
 			${preventTableSplits ? `
 			table {
 				page-break-inside: avoid !important;
@@ -196,25 +409,47 @@ export default class PerfectPDFExportPlugin extends Plugin {
 
 			${optimizeTableWidth ? `
 			table {
-				width: 100%;
-				max-width: 100%;
-				table-layout: auto;
+				width: 100% !important;
+				max-width: 100% !important;
+				table-layout: fixed !important;
 				font-size: 0.85em;
+				overflow: hidden;
 			}
 
 			th, td {
-				padding: 6px 8px;
-				word-wrap: break-word;
-				word-break: break-word;
-				max-width: 200px;
+				padding: 4px 6px;
+				word-wrap: break-word !important;
+				word-break: break-word !important;
+				overflow-wrap: break-word !important;
+				max-width: none;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+
+			/* Smaller font for wide tables (6+ columns) */
+			table[data-wide="true"] {
+				font-size: 0.75em;
 			}
 			` : ''}
 
-			/* Callout optimization */
+			/* Enhanced callout optimization - fixes nested callouts spacing */
 			${preventCalloutSplits ? `
 			.callout {
 				page-break-inside: avoid !important;
-				margin: 1em 0;
+				margin: 0.8em 0 !important;
+				padding: 0.8em !important;
+			}
+
+			/* Nested callouts */
+			.callout .callout {
+				margin: 0.4em 0 !important;
+				padding: 0.5em !important;
+			}
+
+			/* Deep nesting */
+			.callout .callout .callout {
+				margin: 0.2em 0 !important;
+				padding: 0.3em !important;
 			}
 			` : ''}
 
@@ -429,10 +664,178 @@ class PerfectPDFSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		containerEl.createEl('h3', { text: 'Page Numbering & Headers' });
+
+		// Enable Page Numbers
+		new Setting(containerEl)
+			.setName('Enable page numbers')
+			.setDesc('Add page numbers to exported PDFs')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enablePageNumbers)
+				.onChange(async (value) => {
+					this.plugin.settings.enablePageNumbers = value;
+					await this.plugin.saveSettings();
+					this.display(); // Refresh to show/hide position setting
+				}));
+
+		// Page Number Position
+		if (this.plugin.settings.enablePageNumbers) {
+			new Setting(containerEl)
+				.setName('Page number position')
+				.setDesc('Where to place page numbers')
+				.addDropdown(dropdown => dropdown
+					.addOption('top-left', 'Top Left')
+					.addOption('top-center', 'Top Center')
+					.addOption('top-right', 'Top Right')
+					.addOption('bottom-left', 'Bottom Left')
+					.addOption('bottom-center', 'Bottom Center')
+					.addOption('bottom-right', 'Bottom Right')
+					.setValue(this.plugin.settings.pageNumberPosition)
+					.onChange(async (value) => {
+						this.plugin.settings.pageNumberPosition = value as any;
+						await this.plugin.saveSettings();
+					}));
+		}
+
+		// Custom Header
+		new Setting(containerEl)
+			.setName('Custom header')
+			.setDesc('Add a custom header to each page (optional)')
+			.addText(text => text
+				.setPlaceholder('e.g., Company Name')
+				.setValue(this.plugin.settings.customHeader)
+				.onChange(async (value) => {
+					this.plugin.settings.customHeader = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Custom Footer
+		new Setting(containerEl)
+			.setName('Custom footer')
+			.setDesc('Add a custom footer to each page (optional)')
+			.addText(text => text
+				.setPlaceholder('e.g., Confidential')
+				.setValue(this.plugin.settings.customFooter)
+				.onChange(async (value) => {
+					this.plugin.settings.customFooter = value;
+					await this.plugin.saveSettings();
+				}));
+
+		containerEl.createEl('h3', { text: 'Export Options' });
+
+		// Show Preview
+		new Setting(containerEl)
+			.setName('Show preview before export')
+			.setDesc('Display a preview modal before exporting')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showPreviewBeforeExport)
+				.onChange(async (value) => {
+					this.plugin.settings.showPreviewBeforeExport = value;
+					await this.plugin.saveSettings();
+				}));
+
+		containerEl.createEl('h3', { text: 'Export Templates' });
+
+		// Template management
+		const templateDesc = containerEl.createDiv();
+		templateDesc.addClass('setting-item-description');
+		templateDesc.setText('Save and load custom export configurations');
+
+		// Save template - proper UI structure
+		let templateNameValue = '';
+		new Setting(containerEl)
+			.setName('Save current settings as template')
+			.setDesc('Enter a name and save your current settings')
+			.addText(text => text
+				.setPlaceholder('Template name')
+				.onChange((value) => {
+					templateNameValue = value;
+				}))
+			.addButton(button => button
+				.setButtonText('Save Template')
+				.setCta()
+				.onClick(() => {
+					if (templateNameValue) {
+						this.plugin.saveTemplate(templateNameValue);
+						this.display(); // Refresh to show new template
+					} else {
+						new Notice('Please enter a template name');
+					}
+				}));
+
+		// List saved templates
+		if (this.plugin.settings.savedTemplates.length > 0) {
+			containerEl.createEl('h4', { text: 'Saved Templates' });
+			
+			this.plugin.settings.savedTemplates.forEach(template => {
+				new Setting(containerEl)
+					.setName(template.name)
+					.addButton(button => button
+						.setButtonText('Load')
+						.onClick(() => {
+							this.plugin.loadTemplate(template.name);
+							this.display(); // Refresh display with loaded settings
+						}))
+					.addButton(button => button
+						.setButtonText('Delete')
+						.setWarning()
+						.onClick(() => {
+							this.plugin.deleteTemplate(template.name);
+							this.display(); // Refresh display
+						}));
+			});
+		}
+
 		// Info section
 		containerEl.createEl('div', {
 			cls: 'setting-item-description',
 			text: '💡 Tip: Use the ribbon icon or command palette to export the current note.'
 		});
+	}
+}
+
+/**
+ * Preview Modal
+ */
+class PreviewModal extends Modal {
+	file: TFile;
+	onConfirm: () => void;
+	onCancel: () => void;
+
+	constructor(app: App, file: TFile, onConfirm: () => void, onCancel: () => void) {
+		super(app);
+		this.file = file;
+		this.onConfirm = onConfirm;
+		this.onCancel = onCancel;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		
+		contentEl.createEl('h2', { text: 'PDF Export Preview' });
+		contentEl.createEl('p', { text: `Ready to export: ${this.file.basename}` });
+		
+		const buttonContainer = contentEl.createDiv();
+		buttonContainer.style.display = 'flex';
+		buttonContainer.style.gap = '10px';
+		buttonContainer.style.marginTop = '20px';
+		
+		const confirmButton = buttonContainer.createEl('button', { text: 'Export to PDF' });
+		confirmButton.addClass('mod-cta');
+		confirmButton.onclick = () => {
+			this.close();
+			this.onConfirm();
+		};
+		
+		const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+		cancelButton.onclick = () => {
+			this.close();
+			this.onCancel();
+		};
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
 	}
 }
