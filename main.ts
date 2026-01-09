@@ -251,7 +251,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 		
 		const template: ExportTemplate = {
 			name,
-			settings: { ...settingsToSave, savedTemplates: [] }
+			settings: settingsToSave as PerfectPDFSettings
 		};
 		
 		this.settings.savedTemplates.push(template);
@@ -299,7 +299,16 @@ export default class PerfectPDFExportPlugin extends Plugin {
 
 		// Sanitize custom text to prevent CSS injection
 		const sanitizeCSS = (text: string): string => {
-			return text.replace(/["'\\]/g, (match) => '\\' + match);
+			// Remove or escape potentially dangerous characters for CSS content
+			return text
+				.replace(/[\\]/g, '\\\\')  // Escape backslashes first
+				.replace(/["]/g, '\\"')     // Escape quotes
+				.replace(/[']/g, "\\'")     // Escape single quotes
+				.replace(/\n/g, ' ')        // Replace newlines with spaces
+				.replace(/\r/g, '')         // Remove carriage returns
+				.replace(/[(){}[\]<>]/g, '') // Remove potentially problematic chars
+				.replace(/;/g, '')          // Remove semicolons
+				.substring(0, 100);         // Limit length
 		};
 
 		// Determine page orientation CSS
@@ -732,26 +741,26 @@ class PerfectPDFSettingTab extends PluginSettingTab {
 		templateDesc.addClass('setting-item-description');
 		templateDesc.setText('Save and load custom export configurations');
 
-		// Save template button
+		// Save template - proper UI structure
+		let templateNameValue = '';
 		new Setting(containerEl)
 			.setName('Save current settings as template')
-			.setDesc('Save your current settings for later use')
+			.setDesc('Enter a name and save your current settings')
 			.addText(text => text
 				.setPlaceholder('Template name')
-				.then((textComponent) => {
-					new Setting(containerEl)
-						.addButton(button => button
-							.setButtonText('Save Template')
-							.onClick(() => {
-								const name = textComponent.getValue();
-								if (name) {
-									this.plugin.saveTemplate(name);
-									textComponent.setValue('');
-									this.display(); // Refresh to show new template
-								} else {
-									new Notice('Please enter a template name');
-								}
-							}));
+				.onChange((value) => {
+					templateNameValue = value;
+				}))
+			.addButton(button => button
+				.setButtonText('Save Template')
+				.setCta()
+				.onClick(() => {
+					if (templateNameValue) {
+						this.plugin.saveTemplate(templateNameValue);
+						this.display(); // Refresh to show new template
+					} else {
+						new Notice('Please enter a template name');
+					}
 				}));
 
 		// List saved templates
