@@ -246,14 +246,13 @@ export default class PerfectPDFExportPlugin extends Plugin {
 	 * Save current settings as a template
 	 */
 	saveTemplate(name: string) {
+		// Create a shallow copy of settings without the savedTemplates array
+		const { savedTemplates, ...settingsToSave } = this.settings;
+		
 		const template: ExportTemplate = {
 			name,
-			settings: { ...this.settings }
+			settings: { ...settingsToSave, savedTemplates: [] }
 		};
-		
-		// Remove templates array from the saved template
-		const { savedTemplates, ...settingsToSave } = template.settings;
-		template.settings = settingsToSave as PerfectPDFSettings;
 		
 		this.settings.savedTemplates.push(template);
 		this.saveSettings();
@@ -298,6 +297,11 @@ export default class PerfectPDFExportPlugin extends Plugin {
 		        preventListSplits, optimizeTableWidth, wordWrap, enablePageNumbers,
 		        pageNumberPosition, customHeader, customFooter, pageOrientation } = this.settings;
 
+		// Sanitize custom text to prevent CSS injection
+		const sanitizeCSS = (text: string): string => {
+			return text.replace(/["'\\]/g, (match) => '\\' + match);
+		};
+
 		// Determine page orientation CSS
 		let orientationCSS = '';
 		if (pageOrientation === 'landscape') {
@@ -328,24 +332,26 @@ export default class PerfectPDFExportPlugin extends Plugin {
 			}
 		}
 
-		// Custom headers and footers
+		// Custom headers and footers with sanitization
 		let headerCSS = '';
 		let footerCSS = '';
 		if (customHeader) {
+			const sanitizedHeader = sanitizeCSS(customHeader);
 			headerCSS = `
 			@page {
 				@top-center {
-					content: "${customHeader}";
+					content: "${sanitizedHeader}";
 					font-size: 9pt;
 					color: #666;
 				}
 			}`;
 		}
 		if (customFooter) {
+			const sanitizedFooter = sanitizeCSS(customFooter);
 			footerCSS = `
 			@page {
 				@bottom-center {
-					content: "${customFooter}";
+					content: "${sanitizedFooter}";
 					font-size: 9pt;
 					color: #666;
 				}
@@ -411,8 +417,8 @@ export default class PerfectPDFExportPlugin extends Plugin {
 				text-overflow: ellipsis;
 			}
 
-			/* Auto-adjust for landscape if table is wide */
-			table[data-wide="true"], table:has(> thead > tr > th:nth-child(6)) {
+			/* Smaller font for wide tables (6+ columns) */
+			table[data-wide="true"] {
 				font-size: 0.75em;
 			}
 			` : ''}
