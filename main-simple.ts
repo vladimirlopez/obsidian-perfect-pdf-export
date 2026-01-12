@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, MarkdownView } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, MarkdownView, Menu } from 'obsidian';
 
 /**
  * Plugin Settings Interface
@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS: PerfectPDFSettings = {
 	margins: 'normal',
 	preventTableSplits: true,
 	preventCalloutSplits: true,
-	preventListSplits: false, // Allow lists to break if needed
+	preventListSplits: false,
 	optimizeTableWidth: true,
 	wordWrap: true,
 	showExportInstructions: true
@@ -74,26 +74,17 @@ export default class PerfectPDFExportPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// Add ribbon icon
-		this.addRibbonIcon('file-down', 'Export to Perfect PDF', async (evt: MouseEvent) => {
+		// Add ribbon icon with PROPER ICON
+		this.addRibbonIcon('lucide-file-pdf', 'Export to PDF', async (evt: MouseEvent) => {
 			await this.exportCurrentFileToPDF();
 		});
 
 		// Add command
 		this.addCommand({
 			id: 'export-to-perfect-pdf',
-			name: 'Export current note to Perfect PDF',
+			name: 'Export current note to PDF',
 			callback: async () => {
 				await this.exportCurrentFileToPDF();
-			}
-		});
-
-		// Add command for batch export
-		this.addCommand({
-			id: 'export-folder-to-pdf',
-			name: 'Export current folder to PDFs',
-			callback: async () => {
-				new Notice('Batch export coming in v0.2.0!');
 			}
 		});
 
@@ -125,7 +116,7 @@ export default class PerfectPDFExportPlugin extends Plugin {
 	}
 
 	/**
-	 * Main export function
+	 * Main export function - SIMPLIFIED TO ACTUALLY WORK
 	 */
 	async exportCurrentFileToPDF() {
 		const activeFile = this.app.workspace.getActiveFile();
@@ -135,29 +126,58 @@ export default class PerfectPDFExportPlugin extends Plugin {
 			return;
 		}
 
-		// Check if we have an active markdown view
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!activeView) {
 			new Notice('Please open the note in reading or editing view to export');
 			return;
 		}
 
-		// Show instructions if enabled
-		if (this.settings.showExportInstructions) {
-			new Notice('📄 Print dialog will open\n\n🍎 Mac: Select "Save as PDF" from the PDF dropdown menu\n🪟 Windows: Choose "Microsoft Print to PDF" as printer\n\n💡 Tip: You can disable this message in settings', 10000);
-		}
-
 		try {
-			// Apply our CSS optimizations
+			// Generate CSS
 			const css = this.generateOptimizedCSS();
 			
-			// Use Obsidian's built-in print functionality with our CSS
-			await this.printWithCustomCSS(css);
+			// Show notice
+			new Notice('💡 Opening print dialog...\n\n🖨️ Select "Save as PDF" from your printer options', 5000);
+			
+			// Apply CSS and trigger print
+			await this.applyPrintCSSAndPrint(css);
 			
 		} catch (error) {
 			console.error('Export failed:', error);
-			new Notice('PDF export failed. See console for details.');
+			new Notice('PDF export failed. Check console for details.');
 		}
+	}
+
+	/**
+	 * Apply print CSS and trigger print dialog
+	 */
+	async applyPrintCSSAndPrint(css: string) {
+		// Remove existing style
+		const existingStyle = document.getElementById('perfect-pdf-styles');
+		if (existingStyle) existingStyle.remove();
+
+		// Add print styles
+		const styleEl = document.createElement('style');
+		styleEl.id = 'perfect-pdf-styles';
+		styleEl.textContent = css;
+		document.head.appendChild(styleEl);
+
+		// Small delay to let CSS apply
+		await new Promise(resolve => setTimeout(resolve, 200));
+
+		// Trigger print
+		window.print();
+
+		// Cleanup after print dialog closes
+		const cleanup = () => {
+			const el = document.getElementById('perfect-pdf-styles');
+			if (el) el.remove();
+		};
+
+		// Listen for both events
+		window.addEventListener('afterprint', cleanup, { once: true });
+		// Fallback cleanup after 10 seconds
+		setTimeout(cleanup, 10000);
 	}
 
 	/**
@@ -169,29 +189,49 @@ export default class PerfectPDFExportPlugin extends Plugin {
 
 		let css = `
 		@media print {
-			/* Base font size */
-			body {
-				font-size: ${fontSize}pt;
-				line-height: 1.5;
+			/* Hide Obsidian UI */
+			.titlebar,
+			.workspace-ribbon,
+			.workspace-tab-header-container,
+			.status-bar,
+			.view-header,
+			.nav-files-container,
+			.workspace-split.mod-left-split,
+			.workspace-split.mod-right-split {
+				display: none !important;
 			}
 
-			/* Margins */
+			/* Make workspace fill page */
+			.workspace-leaf-content {
+				padding: 0 !important;
+			}
+
+			/* Base font size */
+			body, .markdown-preview-view, .markdown-reading-view {
+				font-size: ${fontSize}pt !important;
+				line-height: 1.5 !important;
+				color: black !important;
+				background: white !important;
+			}
+
+			/* Page margins */
 			@page {
 				margin: ${margins === 'narrow' ? '0.5in' : margins === 'wide' ? '1in' : '0.75in'};
+				size: ${this.settings.pageOrientation === 'landscape' ? 'landscape' : 'portrait'};
 			}
 
-			/* Prevent horizontal overflow */
+			/* Prevent overflow */
 			* {
-				max-width: 100%;
-				box-sizing: border-box;
+				max-width: 100% !important;
+				box-sizing: border-box !important;
 			}
 
 			/* Word wrapping */
 			${wordWrap ? `
 			p, li, td, th {
-				word-wrap: break-word;
-				overflow-wrap: break-word;
-				hyphens: auto;
+				word-wrap: break-word !important;
+				overflow-wrap: break-word !important;
+				hyphens: auto !important;
 			}
 			` : ''}
 
@@ -204,137 +244,56 @@ export default class PerfectPDFExportPlugin extends Plugin {
 
 			${optimizeTableWidth ? `
 			table {
-				width: 100%;
-				max-width: 100%;
-				table-layout: auto;
-				font-size: 0.85em;
+				width: 100% !important;
+				table-layout: fixed !important;
 			}
-
-			th, td {
-				padding: 6px 8px;
-				word-wrap: break-word;
-				word-break: break-word;
-				max-width: 200px;
+			td, th {
+				word-wrap: break-word !important;
 			}
 			` : ''}
 
-			/* Callout optimization */
+			/* Callout boxes */
 			${preventCalloutSplits ? `
 			.callout {
 				page-break-inside: avoid !important;
-				margin: 1em 0;
 			}
 			` : ''}
-
-			/* List optimization */
-			${preventListSplits ? `
-			ul, ol {
-				page-break-inside: avoid !important;
-			}
-			` : `
-			ul, ol {
-				page-break-inside: auto;
-			}
-			`}
-
-			li {
-				page-break-inside: avoid !important;
-			}
 
 			/* Code blocks */
 			pre, code {
 				page-break-inside: avoid !important;
 				white-space: pre-wrap !important;
-				word-wrap: break-word !important;
 			}
+
+			/* Lists */
+			${preventListSplits ? `
+			li {
+				page-break-inside: avoid !important;
+			}
+			` : ''}
 
 			/* Headings */
 			h1, h2, h3, h4, h5, h6 {
 				page-break-after: avoid !important;
-				page-break-inside: avoid !important;
-			}
-
-			/* Keep heading with content */
-			h1 + p, h2 + p, h3 + p {
-				page-break-before: avoid !important;
-			}
-
-			/* Blockquotes */
-			blockquote {
-				page-break-inside: avoid !important;
-			}
-
-			/* Links - break if needed */
-			a {
-				word-break: break-all;
-				overflow-wrap: break-word;
 			}
 
 			/* Images */
 			img {
+				max-width: 100% !important;
+				height: auto !important;
 				page-break-inside: avoid !important;
-				max-width: 100%;
+			}
+
+			/* Links - show URLs */
+			a[href]:after {
+				content: " (" attr(href) ")" !important;
+				font-size: 0.8em !important;
+				color: #666 !important;
 			}
 		}
 		`;
 
 		return css;
-	}
-
-	/**
-	 * Print with custom CSS - Uses Obsidian's native print functionality
-	 */
-	async printWithCustomCSS(css: string) {
-		// Clean up any existing style injection
-		const existingStyle = document.getElementById('perfect-pdf-export-styles');
-		if (existingStyle) existingStyle.remove();
-
-		// Inject custom CSS
-		const styleEl = document.createElement('style');
-		styleEl.id = 'perfect-pdf-export-styles';
-		styleEl.textContent = css;
-		document.head.appendChild(styleEl);
-
-		// Wait for styles to apply
-		await new Promise(resolve => setTimeout(resolve, 100));
-
-		// Try to use Obsidian's native print/export commands
-		let commandExecuted = false;
-
-		// Try different possible command IDs
-		const commandIds = [
-			'editor:print',
-			'markdown:export-pdf',
-			'editor:print-to-pdf',
-			'app:print'
-		];
-
-		for (const commandId of commandIds) {
-			try {
-				// @ts-ignore - executeCommandById exists but may not be in types
-				const result = await this.app.commands.executeCommandById(commandId);
-				if (result !== false) {
-					commandExecuted = true;
-					console.log(`Successfully executed command: ${commandId}`);
-					break;
-				}
-			} catch (e) {
-				// Command doesn't exist, try next one
-				continue;
-			}
-		}
-
-		// Fallback to window.print() if no command worked
-		if (!commandExecuted) {
-			console.log('No native print command found, using window.print()');
-			window.print();
-		}
-
-		// Cleanup after a delay
-		setTimeout(() => {
-			const el = document.getElementById('perfect-pdf-export-styles');
-			if (el) el.remove();
-		}, 5000);
 	}
 }
 
@@ -350,47 +309,43 @@ class PerfectPDFSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const { containerEl } = this;
+		const {containerEl} = this;
 		containerEl.empty();
 
-		containerEl.createEl('h2', { text: 'Perfect PDF Export Settings' });
+		containerEl.createEl('h2', {text: 'Perfect PDF Export Settings'});
 
-		// Export Preset
+		// Export preset
 		new Setting(containerEl)
 			.setName('Export preset')
-			.setDesc('Quick presets for different use cases')
+			.setDesc('Quick presets for common use cases')
 			.addDropdown(dropdown => dropdown
-				.addOption('teaching', 'Teaching (readable, optimized for lessons)')
-				.addOption('professional', 'Professional (balanced, clean)')
-				.addOption('minimal', 'Minimal (compact, more content)')
+				.addOption('teaching', 'Teaching (11pt, readable)')
+				.addOption('professional', 'Professional (10pt, balanced)')
+				.addOption('minimal', 'Minimal (9pt, compact)')
 				.setValue(this.plugin.settings.exportPreset)
-				.onChange(async (value) => {
-					this.plugin.applyPreset(value as any);
+				.onChange(async (value: 'teaching' | 'professional' | 'minimal') => {
+					this.plugin.applyPreset(value);
 					await this.plugin.saveSettings();
-					this.display(); // Refresh display
+					this.display(); // Refresh settings
 				}));
 
-		containerEl.createEl('h3', { text: 'Layout Options' });
-
-		// Font Size
+		// Font size
 		new Setting(containerEl)
 			.setName('Font size')
-			.setDesc('Base font size in points (8-14)')
+			.setDesc('Base font size in points')
 			.addSlider(slider => slider
 				.setLimits(8, 14, 1)
 				.setValue(this.plugin.settings.fontSize)
 				.setDynamicTooltip()
 				.onChange(async (value) => {
-					// Validate input
-					const validatedValue = Math.min(14, Math.max(8, value));
-					this.plugin.settings.fontSize = validatedValue;
+					this.plugin.settings.fontSize = value;
 					await this.plugin.saveSettings();
 				}));
 
-		// Page Orientation
+		// Page orientation
 		new Setting(containerEl)
 			.setName('Page orientation')
-			.setDesc('Choose page orientation')
+			.setDesc('Portrait or landscape')
 			.addDropdown(dropdown => dropdown
 				.addOption('portrait', 'Portrait')
 				.addOption('landscape', 'Landscape')
@@ -406,21 +361,21 @@ class PerfectPDFSettingTab extends PluginSettingTab {
 			.setName('Margins')
 			.setDesc('Page margins')
 			.addDropdown(dropdown => dropdown
-				.addOption('narrow', 'Narrow (0.5in)')
-				.addOption('normal', 'Normal (0.75in)')
-				.addOption('wide', 'Wide (1in)')
+				.addOption('narrow', 'Narrow (0.5")')
+				.addOption('normal', 'Normal (0.75")')
+				.addOption('wide', 'Wide (1")')
 				.setValue(this.plugin.settings.margins)
 				.onChange(async (value) => {
 					this.plugin.settings.margins = value as any;
 					await this.plugin.saveSettings();
 				}));
 
-		containerEl.createEl('h3', { text: 'Page Break Options' });
+		containerEl.createEl('h3', {text: 'Page Break Prevention'});
 
-		// Prevent Table Splits
+		// Table splits
 		new Setting(containerEl)
 			.setName('Prevent table splits')
-			.setDesc('Keep tables on one page when possible')
+			.setDesc('Keep tables together on one page')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.preventTableSplits)
 				.onChange(async (value) => {
@@ -428,10 +383,10 @@ class PerfectPDFSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Prevent Callout Splits
+		// Callout splits
 		new Setting(containerEl)
 			.setName('Prevent callout splits')
-			.setDesc('Keep callouts on one page')
+			.setDesc('Keep callout boxes together')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.preventCalloutSplits)
 				.onChange(async (value) => {
@@ -439,23 +394,12 @@ class PerfectPDFSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Prevent List Splits
-		new Setting(containerEl)
-			.setName('Prevent list splits')
-			.setDesc('Keep entire lists on one page (may cause overflow)')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.preventListSplits)
-				.onChange(async (value) => {
-					this.plugin.settings.preventListSplits = value;
-					await this.plugin.saveSettings();
-				}));
+		containerEl.createEl('h3', {text: 'Table Optimization'});
 
-		containerEl.createEl('h3', { text: 'Content Optimization' });
-
-		// Optimize Table Width
+		// Optimize table width
 		new Setting(containerEl)
 			.setName('Optimize table width')
-			.setDesc('Automatically adjust table columns to fit page')
+			.setDesc('Auto-fit tables to page width')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.optimizeTableWidth)
 				.onChange(async (value) => {
@@ -463,10 +407,10 @@ class PerfectPDFSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Word Wrap
+		// Word wrap
 		new Setting(containerEl)
-			.setName('Enable word wrap')
-			.setDesc('Break long words to prevent horizontal overflow')
+			.setName('Word wrap')
+			.setDesc('Wrap long words in tables and text')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.wordWrap)
 				.onChange(async (value) => {
@@ -474,21 +418,15 @@ class PerfectPDFSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Show Export Instructions
+		// Show instructions
 		new Setting(containerEl)
 			.setName('Show export instructions')
-			.setDesc('Display helpful message about saving as PDF (recommended for first-time users)')
+			.setDesc('Display help message when exporting')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.showExportInstructions)
 				.onChange(async (value) => {
 					this.plugin.settings.showExportInstructions = value;
 					await this.plugin.saveSettings();
 				}));
-
-		// Info section
-		containerEl.createEl('div', {
-			cls: 'setting-item-description',
-			text: '💡 Tip: Use the ribbon icon or command palette to export the current note.'
-		});
 	}
 }
