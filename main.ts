@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, MarkdownView } from 'obsidian';
 
 /**
  * Plugin Settings Interface
@@ -13,6 +13,7 @@ interface PerfectPDFSettings {
 	preventListSplits: boolean;
 	optimizeTableWidth: boolean;
 	wordWrap: boolean;
+	showExportInstructions: boolean;
 }
 
 /**
@@ -27,7 +28,8 @@ const DEFAULT_SETTINGS: PerfectPDFSettings = {
 	preventCalloutSplits: true,
 	preventListSplits: false, // Allow lists to break if needed
 	optimizeTableWidth: true,
-	wordWrap: true
+	wordWrap: true,
+	showExportInstructions: true
 };
 
 /**
@@ -133,19 +135,25 @@ export default class PerfectPDFExportPlugin extends Plugin {
 			return;
 		}
 
-		new Notice('Exporting to PDF...');
+		// Check if we have an active markdown view
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!activeView) {
+			new Notice('Please open the note in reading or editing view to export');
+			return;
+		}
+
+		// Show instructions if enabled
+		if (this.settings.showExportInstructions) {
+			new Notice('📄 Print dialog will open\n\n🍎 Mac: Select "Save as PDF" from the PDF dropdown menu\n🪟 Windows: Choose "Microsoft Print to PDF" as printer\n\n💡 Tip: You can disable this message in settings', 10000);
+		}
 
 		try {
-			// Get the file content
-			const content = await this.app.vault.read(activeFile);
-			
 			// Apply our CSS optimizations
 			const css = this.generateOptimizedCSS();
 			
 			// Use Obsidian's built-in print functionality with our CSS
-			await this.printWithCustomCSS(content, css);
+			await this.printWithCustomCSS(css);
 			
-			new Notice('PDF export complete!');
 		} catch (error) {
 			console.error('Export failed:', error);
 			new Notice('PDF export failed. See console for details.');
@@ -275,23 +283,41 @@ export default class PerfectPDFExportPlugin extends Plugin {
 
 	/**
 	 * Print with custom CSS
-	 * This is a placeholder - actual implementation will use Obsidian's print API
+	 * Safely injects CSS, triggers print, and cleans up
 	 */
-	async printWithCustomCSS(content: string, css: string) {
+	async printWithCustomCSS(css: string) {
+		// Remove any existing style element first
+		const existingStyle = document.getElementById('perfect-pdf-export-styles');
+		if (existingStyle) {
+			existingStyle.remove();
+		}
+
 		// Create a temporary style element
 		const styleEl = document.createElement('style');
 		styleEl.id = 'perfect-pdf-export-styles';
 		styleEl.textContent = css;
 		document.head.appendChild(styleEl);
 
+		// Wait for styles to apply and ensure rendering is complete
+		await new Promise(resolve => setTimeout(resolve, 300));
+
 		// Trigger print dialog
 		window.print();
 
-		// Clean up after a delay
-		setTimeout(() => {
+		// Clean up after print dialog closes
+		// Listen for both focus and afterprint events
+		const cleanup = () => {
 			const el = document.getElementById('perfect-pdf-export-styles');
 			if (el) el.remove();
-		}, 1000);
+			window.removeEventListener('focus', cleanup);
+			window.removeEventListener('afterprint', cleanup);
+		};
+		
+		window.addEventListener('focus', cleanup);
+		window.addEventListener('afterprint', cleanup);
+		
+		// Fallback cleanup after 10 seconds
+		setTimeout(cleanup, 10000);
 	}
 }
 
@@ -338,7 +364,9 @@ class PerfectPDFSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.fontSize)
 				.setDynamicTooltip()
 				.onChange(async (value) => {
-					this.plugin.settings.fontSize = value;
+					// Validate input
+					const validatedValue = Math.min(14, Math.max(8, value));
+					this.plugin.settings.fontSize = validatedValue;
 					await this.plugin.saveSettings();
 				}));
 
@@ -426,6 +454,17 @@ class PerfectPDFSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.wordWrap)
 				.onChange(async (value) => {
 					this.plugin.settings.wordWrap = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Show Export Instructions
+		new Setting(containerEl)
+			.setName('Show export instructions')
+			.setDesc('Display helpful message about saving as PDF (recommended for first-time users)')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showExportInstructions)
+				.onChange(async (value) => {
+					this.plugin.settings.showExportInstructions = value;
 					await this.plugin.saveSettings();
 				}));
 
